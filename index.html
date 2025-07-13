@@ -1,96 +1,142 @@
-    <script>
-       // ==========================================================================
-// ANUBIS - v3.2: CORREÇÃO FINAL DE INICIALIZAÇÃO
-// ==========================================================================
-
-// Adicionamos um "ouvinte" ao documento inteiro.
-// O código aqui dentro só vai executar depois que todo o HTML for carregado.
-document.addEventListener('DOMContentLoaded', () => {
-    
-    const urlInput = document.getElementById('youtube-url');
-    const processButton = document.getElementById('process-button');
-    const resultsContainer = document.getElementById('results-container');
-    const resultsContent = document.getElementById('results-content');
-
-    // Se por algum motivo o botão não for encontrado, evitamos o erro.
-    if (processButton) {
-        processButton.addEventListener('click', async () => {
-            resultsContent.innerHTML = '<p class="text-center">A contactar o nosso servidor... Por favor, aguarde.</p>';
-            resultsContainer.classList.remove('hidden');
-
-            const url = urlInput.value;
-            if (!url) {
-                alert('Por favor, insira uma URL.');
-                resultsContainer.classList.add('hidden');
-                return;
-            }
-
-            try {
-                const videoId = getVideoId(url);
-                if (!videoId) {
-                    throw new Error('URL inválida ou ID do vídeo não encontrado.');
-                }
-                
-                // Fazemos uma única chamada para o nosso próprio backend!
-                const response = await fetch(`/api/get-video-info?videoID=${videoId}`);
-                const data = await response.json();
-
-                if (!response.ok) {
-                    // Se o nosso backend der um erro, mostramos a mensagem dele.
-                    throw new Error(data.error || 'Falha na comunicação com o servidor.');
-                }
-
-                // A nossa função de exibição agora recebe o objeto completo do nosso backend.
-                displayVideoData(data.videoData, data.transcript);
-
-            } catch (error) {
-                console.error('Ocorreu um erro no processo:', error);
-                resultsContent.innerHTML = `<p class="text-red-500 text-center"><b>Erro:</b> ${error.message}</p>`;
-            }
-        });
-    }
-
-    function getVideoId(url) {
-        const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-        const matches = url.match(regex);
-        return matches ? matches[1] : null;
-    }
-
-    function displayVideoData(data, transcriptText) {
-        if (!data || !data.items || data.items.length === 0) {
-            resultsContent.innerHTML = '<p class="text-red-500 text-center">Nenhum vídeo encontrado com esta URL.</p>';
-            return;
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anubis - Extrator de Informações do YouTube</title>
+    <!-- Incluindo o Tailwind CSS para estilização -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilo para um scroll mais suave na área de transcrição */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
         }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
 
-        const video = data.items[0];
-        const { title, channelTitle, thumbnails } = video.snippet;
-        const { viewCount } = video.statistics;
-        const formattedViews = Number(viewCount).toLocaleString('pt-BR');
-        const transcriptClass = transcriptText.startsWith('[') ? 'text-yellow-600' : 'text-gray-700';
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">Anubis Extractor</h1>
+            <p class="text-gray-600 mt-2">Cole a URL de um vídeo do YouTube para extrair a capa, informações e o roteiro.</p>
+        </header>
 
-        const resultHTML = `
-            <div class="flex flex-col md:flex-row gap-6">
-                <div class="md:w-1/2">
-                    <img src="${thumbnails.high.url}" alt="Capa do vídeo ${title}" class="rounded-lg shadow-lg w-full">
-                </div>
-                <div class="md:w-1/2 flex flex-col justify-center">
-                    <h3 class="text-xl font-bold text-gray-900">${title}</h3>
-                    <p class="text-gray-600 mt-2"><strong>Canal:</strong> ${channelTitle}</p>
-                    <p class="text-gray-600 mt-1"><strong>Visualizações:</strong> ${formattedViews}</p>
+        <main>
+            <!-- Seção de Entrada da URL -->
+            <div class="bg-white p-6 rounded-lg shadow-md max-w-3xl mx-auto">
+                <label for="youtube-url" class="block text-sm font-medium text-gray-700 mb-2">URL do Vídeo do YouTube:</label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input type="text" id="youtube-url" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ" class="flex-grow p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                    <button id="process-button" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-md hover:bg-blue-700 transition-colors duration-300 shadow-sm">
+                        Processar
+                    </button>
                 </div>
             </div>
-            <div class="mt-6 border-t pt-4">
-                <details open>
-                    <summary class="text-lg font-semibold cursor-pointer hover:text-blue-600">Roteiro do Vídeo</summary>
-                    <div class="mt-2 p-4 bg-gray-50 rounded-lg text-base leading-relaxed max-h-96 overflow-y-auto ${transcriptClass}">${transcriptText}</div>
-                </details>
-            </div>`;
 
-        resultsContent.innerHTML = resultHTML;
-        resultsContainer.classList.remove('hidden');
-    }
-});
+            <!-- Seção de Resultados (inicialmente oculta) -->
+            <div id="results-container" class="hidden bg-white p-6 rounded-lg shadow-md max-w-3xl mx-auto mt-8">
+                <div id="results-content">
+                    <!-- O conteúdo do vídeo será inserido aqui pelo JavaScript -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- SEU SCRIPT JAVASCRIPT (sem alterações) -->
+    <script>
+       // ==========================================================================
+       // ANUBIS - v3.2: CORREÇÃO FINAL DE INICIALIZAÇÃO
+       // ==========================================================================
+       document.addEventListener('DOMContentLoaded', () => {
+           const urlInput = document.getElementById('youtube-url');
+           const processButton = document.getElementById('process-button');
+           const resultsContainer = document.getElementById('results-container');
+           const resultsContent = document.getElementById('results-content');
+
+           if (processButton) {
+               processButton.addEventListener('click', async () => {
+                   resultsContent.innerHTML = '<p class="text-center">A contactar o nosso servidor... Por favor, aguarde.</p>';
+                   resultsContainer.classList.remove('hidden');
+
+                   const url = urlInput.value;
+                   if (!url) {
+                       resultsContent.innerHTML = '<p class="text-red-500 text-center">Por favor, insira uma URL.</p>';
+                       return;
+                   }
+
+                   try {
+                       const videoId = getVideoId(url);
+                       if (!videoId) {
+                           throw new Error('URL inválida ou ID do vídeo não encontrado.');
+                       }
+                       
+                       // A chamada para o seu backend Vercel
+                       const response = await fetch(`/api/get-video-info?videoID=${videoId}`);
+                       const data = await response.json();
+
+                       if (!response.ok) {
+                           throw new Error(data.error || 'Falha na comunicação com o servidor.');
+                       }
+
+                       displayVideoData(data.videoData, data.transcript);
+
+                   } catch (error) {
+                       console.error('Ocorreu um erro no processo:', error);
+                       resultsContent.innerHTML = `<p class="text-red-500 text-center"><b>Erro:</b> ${error.message}</p>`;
+                   }
+               });
+           }
+
+           function getVideoId(url) {
+               const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+               const matches = url.match(regex);
+               return matches ? matches[1] : null;
+           }
+
+           function displayVideoData(data, transcriptText) {
+               if (!data || !data.items || data.items.length === 0) {
+                   resultsContent.innerHTML = '<p class="text-red-500 text-center">Nenhum vídeo encontrado com esta URL.</p>';
+                   return;
+               }
+
+               const video = data.items[0];
+               const { title, channelTitle, thumbnails } = video.snippet;
+               const { viewCount } = video.statistics;
+               const formattedViews = Number(viewCount).toLocaleString('pt-BR');
+               const transcriptClass = transcriptText.startsWith('[') ? 'text-yellow-600 font-semibold' : 'text-gray-700';
+
+               const resultHTML = `
+                   <div class="flex flex-col md:flex-row gap-6">
+                       <div class="md:w-1/2">
+                           <img src="${thumbnails.high.url}" alt="Capa do vídeo ${title}" class="rounded-lg shadow-lg w-full">
+                       </div>
+                       <div class="md:w-1/2 flex flex-col justify-center">
+                           <h3 class="text-xl font-bold text-gray-900">${title}</h3>
+                           <p class="text-gray-600 mt-2"><strong>Canal:</strong> ${channelTitle}</p>
+                           <p class="text-gray-600 mt-1"><strong>Visualizações:</strong> ${formattedViews}</p>
+                       </div>
+                   </div>
+                   <div class="mt-6 border-t pt-4">
+                       <details open>
+                           <summary class="text-lg font-semibold cursor-pointer hover:text-blue-600">Roteiro do Vídeo</summary>
+                           <div class="mt-2 p-4 bg-gray-50 rounded-lg text-base leading-relaxed max-h-96 overflow-y-auto custom-scrollbar ${transcriptClass}">${transcriptText}</div>
+                       </details>
+                   </div>`;
+
+               resultsContent.innerHTML = resultHTML;
+               resultsContainer.classList.remove('hidden');
+           }
+       });
     </script>
-    
 </body>
 </html>
