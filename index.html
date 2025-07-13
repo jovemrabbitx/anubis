@@ -1,12 +1,19 @@
     <script>
-        // ==========================================================================
-        // ANUBIS - v3.1: DEPURAÇÃO AVANÇADA
-        // ==========================================================================
-        const urlInput = document.getElementById('youtube-url');
-        const processButton = document.getElementById('process-button');
-        const resultsContainer = document.getElementById('results-container');
-        const resultsContent = document.getElementById('results-content');
+       // ==========================================================================
+// ANUBIS - v3.2: CORREÇÃO FINAL DE INICIALIZAÇÃO
+// ==========================================================================
 
+// Adicionamos um "ouvinte" ao documento inteiro.
+// O código aqui dentro só vai executar depois que todo o HTML for carregado.
+document.addEventListener('DOMContentLoaded', () => {
+    
+    const urlInput = document.getElementById('youtube-url');
+    const processButton = document.getElementById('process-button');
+    const resultsContainer = document.getElementById('results-container');
+    const resultsContent = document.getElementById('results-content');
+
+    // Se por algum motivo o botão não for encontrado, evitamos o erro.
+    if (processButton) {
         processButton.addEventListener('click', async () => {
             resultsContent.innerHTML = '<p class="text-center">A contactar o nosso servidor... Por favor, aguarde.</p>';
             resultsContainer.classList.remove('hidden');
@@ -24,16 +31,16 @@
                     throw new Error('URL inválida ou ID do vídeo não encontrado.');
                 }
                 
+                // Fazemos uma única chamada para o nosso próprio backend!
                 const response = await fetch(`/api/get-video-info?videoID=${videoId}`);
                 const data = await response.json();
-                
-                // PONTO DE VERIFICAÇÃO IMPORTANTE NO NAVEGADOR
-                console.log("Dados completos recebidos do nosso backend:", data);
 
                 if (!response.ok) {
+                    // Se o nosso backend der um erro, mostramos a mensagem dele.
                     throw new Error(data.error || 'Falha na comunicação com o servidor.');
                 }
 
+                // A nossa função de exibição agora recebe o objeto completo do nosso backend.
                 displayVideoData(data.videoData, data.transcript);
 
             } catch (error) {
@@ -41,46 +48,48 @@
                 resultsContent.innerHTML = `<p class="text-red-500 text-center"><b>Erro:</b> ${error.message}</p>`;
             }
         });
+    }
 
-        function getVideoId(url) {
-            const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-            const matches = url.match(regex);
-            return matches ? matches[1] : null;
+    function getVideoId(url) {
+        const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const matches = url.match(regex);
+        return matches ? matches[1] : null;
+    }
+
+    function displayVideoData(data, transcriptText) {
+        if (!data || !data.items || data.items.length === 0) {
+            resultsContent.innerHTML = '<p class="text-red-500 text-center">Nenhum vídeo encontrado com esta URL.</p>';
+            return;
         }
 
-        function displayVideoData(data, transcriptText) {
-            if (!data || !data.items || data.items.length === 0) {
-                resultsContent.innerHTML = '<p class="text-red-500 text-center">Nenhum vídeo encontrado com esta URL.</p>';
-                return;
-            }
+        const video = data.items[0];
+        const { title, channelTitle, thumbnails } = video.snippet;
+        const { viewCount } = video.statistics;
+        const formattedViews = Number(viewCount).toLocaleString('pt-BR');
+        const transcriptClass = transcriptText.startsWith('[') ? 'text-yellow-600' : 'text-gray-700';
 
-            const video = data.items[0];
-            const { title, channelTitle, thumbnails } = video.snippet;
-            const { viewCount } = video.statistics;
-            const formattedViews = Number(viewCount).toLocaleString('pt-BR');
-            const transcriptClass = transcriptText.startsWith('[') ? 'text-yellow-600' : 'text-gray-700';
-
-            const resultHTML = `
-                <div class="flex flex-col md:flex-row gap-6">
-                    <div class="md:w-1/2">
-                        <img src="${thumbnails.high.url}" alt="Capa do vídeo ${title}" class="rounded-lg shadow-lg w-full">
-                    </div>
-                    <div class="md:w-1/2 flex flex-col justify-center">
-                        <h3 class="text-xl font-bold text-gray-900">${title}</h3>
-                        <p class="text-gray-600 mt-2"><strong>Canal:</strong> ${channelTitle}</p>
-                        <p class="text-gray-600 mt-1"><strong>Visualizações:</strong> ${formattedViews}</p>
-                    </div>
+        const resultHTML = `
+            <div class="flex flex-col md:flex-row gap-6">
+                <div class="md:w-1/2">
+                    <img src="${thumbnails.high.url}" alt="Capa do vídeo ${title}" class="rounded-lg shadow-lg w-full">
                 </div>
-                <div class="mt-6 border-t pt-4">
-                    <details open>
-                        <summary class="text-lg font-semibold cursor-pointer hover:text-blue-600">Roteiro do Vídeo</summary>
-                        <div class="mt-2 p-4 bg-gray-50 rounded-lg text-base leading-relaxed max-h-96 overflow-y-auto ${transcriptClass}">${transcriptText}</div>
-                    </details>
-                </div>`;
+                <div class="md:w-1/2 flex flex-col justify-center">
+                    <h3 class="text-xl font-bold text-gray-900">${title}</h3>
+                    <p class="text-gray-600 mt-2"><strong>Canal:</strong> ${channelTitle}</p>
+                    <p class="text-gray-600 mt-1"><strong>Visualizações:</strong> ${formattedViews}</p>
+                </div>
+            </div>
+            <div class="mt-6 border-t pt-4">
+                <details open>
+                    <summary class="text-lg font-semibold cursor-pointer hover:text-blue-600">Roteiro do Vídeo</summary>
+                    <div class="mt-2 p-4 bg-gray-50 rounded-lg text-base leading-relaxed max-h-96 overflow-y-auto ${transcriptClass}">${transcriptText}</div>
+                </details>
+            </div>`;
 
-            resultsContent.innerHTML = resultHTML;
-            resultsContainer.classList.remove('hidden');
-        }
+        resultsContent.innerHTML = resultHTML;
+        resultsContainer.classList.remove('hidden');
+    }
+});
     </script>
     
 </body>
