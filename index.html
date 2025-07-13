@@ -23,7 +23,7 @@
 
         <div class="text-center p-8 bg-white rounded-xl shadow-md">
             <h1 class="text-3xl font-bold text-gray-800">Projeto Anubis</h1>
-            <p class="text-gray-500 mt-2">Cole a URL de um vídeo para extrair seus dados e roteiro.</p>
+            <p class="text-gray-500 mt-2">Cole a URL de um vídeo para extrair os seus dados e roteiro.</p>
         </div>
 
         <div class="mt-8 p-8 bg-white rounded-xl shadow-md">
@@ -55,7 +55,7 @@
 
     <script>
         // ==========================================================================
-        // ANUBIS - v1.3: VERSÃO FINAL E ROBUSTA
+        // ANUBIS - v2.0: USANDO O NOSSO PRÓPRIO SERVIÇO DE ROTEIROS
         // ==========================================================================
 
         const urlInput = document.getElementById('youtube-url');
@@ -63,19 +63,32 @@
         const resultsContainer = document.getElementById('results-container');
         const resultsContent = document.getElementById('results-content');
 
+        // BÓNUS: Não vamos mais pedir a chave de API! Vamos buscá-la de um ficheiro especial.
+        async function getApiKey() {
+            try {
+                // O nosso site vai tentar buscar a chave de um ficheiro /api/key
+                const response = await fetch('/api/key');
+                const data = await response.json();
+                return data.apiKey;
+            } catch (error) {
+                console.error("Não foi possível buscar a chave de API do servidor. Usando prompt como fallback.");
+                return prompt('Não foi possível buscar a chave de API. Por favor, cole a sua Chave de API do YouTube:');
+            }
+        }
+
         processButton.addEventListener('click', async () => {
-            resultsContent.innerHTML = '<p class="text-center">Buscando dados, por favor aguarde...</p>';
+            resultsContent.innerHTML = '<p class="text-center">A buscar dados, por favor aguarde...</p>';
             resultsContainer.classList.remove('hidden');
 
             const url = urlInput.value;
-            const apiKey = prompt('Por favor, cole sua Chave de API do YouTube:');
-
-            if (!url || !apiKey) {
-                alert('Por favor, insira uma URL e sua Chave de API.');
+            if (!url) {
+                alert('Por favor, insira uma URL.');
                 resultsContainer.classList.add('hidden');
                 return;
             }
-
+            
+            // Já não pedimos a chave aqui!
+            
             try {
                 const videoId = getVideoId(url);
                 if (!videoId) {
@@ -85,7 +98,7 @@
                 }
 
                 const [videoData, transcript] = await Promise.all([
-                    fetchVideoData(videoId, apiKey),
+                    fetchVideoData(videoId), // Já não precisa da chave aqui
                     fetchTranscript(videoId)
                 ]);
                 
@@ -103,7 +116,11 @@
             return matches ? matches[1] : null;
         }
 
-        async function fetchVideoData(videoId, apiKey) {
+        // A função agora vai buscar a chave de API sozinha.
+        async function fetchVideoData(videoId) {
+            const apiKey = await getApiKey();
+            if (!apiKey) throw new Error("Chave de API não encontrada.");
+
             const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${apiKey}`;
             const response = await fetch(apiUrl);
             if (!response.ok) {
@@ -114,39 +131,24 @@
         }
 
         /**
-         * **FUNÇÃO ATUALIZADA COM REDE DE SEGURANÇA (try...catch)**
+         * **FUNÇÃO ATUALIZADA PARA USAR O NOSSO SERVIÇO**
          */
         async function fetchTranscript(videoId) {
-            const targetUrl = `https://youtubetranscript.com/?server_vid=${videoId}`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-            
             try {
-                const response = await fetch(proxyUrl);
-                if (!response.ok) {
-                    return `[ERRO] O serviço de proxy não conseguiu buscar o roteiro (Código: ${response.status}).`;
-                }
+                // Chamamos o nosso próprio serviço!
+                const response = await fetch(`/api/transcript?videoID=${videoId}`);
                 const data = await response.json();
-                
-                // A rede de segurança vem aqui!
-                try {
-                    // Tentamos "abrir a caixa da pizza"
-                    const transcriptData = JSON.parse(data.contents);
-                    
-                    if (!Array.isArray(transcriptData) || transcriptData.length === 0) {
-                        return "[AVISO] O vídeo não possui legendas disponíveis para extração.";
-                    }
-                    
-                    return transcriptData.map(item => item.text).join(' ');
 
-                } catch (e) {
-                    // Se não for uma pizza (JSON válido), caímos aqui!
-                    console.error("A resposta do serviço de roteiro não era JSON:", data.contents);
-                    return "[ERRO] O serviço de roteiro retornou uma resposta em formato inesperado (não era JSON). Provavelmente não encontrou o vídeo ou a legenda.";
+                if (!response.ok) {
+                    // Se o nosso serviço der um erro, mostramos a mensagem dele.
+                    return `[ERRO] ${data.error}`;
                 }
+
+                return data.transcript;
 
             } catch (error) {
-                console.error("Erro detalhado ao buscar o roteiro:", error);
-                return "[ERRO] Falha crítica na comunicação com o serviço de roteiro.";
+                console.error("Erro ao comunicar com o serviço de roteiro:", error);
+                return "[ERRO] Falha crítica na comunicação com o nosso serviço de roteiro.";
             }
         }
 
