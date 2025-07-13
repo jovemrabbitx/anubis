@@ -1,4 +1,4 @@
-// api/get-video-info.js - Versão final, leve e inteligente
+// api/get-video-info.js - Versão 2.0: Priorizando transcrição em Português
 const { YoutubeTranscript } = require('youtube-transcript');
 
 // Função principal do nosso serviço
@@ -14,22 +14,28 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // Buscamos os dados do vídeo primeiro
+        // Buscamos os dados do vídeo primeiro (título, capa, etc.)
         const videoDataResponse = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoID}&key=${apiKey}`);
         if (!videoDataResponse.ok) {
+            const errorData = await videoDataResponse.json();
+            console.error('Erro na API do YouTube:', errorData);
             throw new Error('Falha ao buscar dados do vídeo na API do YouTube.');
         }
         const videoData = await videoDataResponse.json();
 
         let transcriptText;
         try {
-            // Tentamos buscar a transcrição. A biblioteca vai procurar pela melhor disponível.
-            const transcript = await YoutubeTranscript.fetchTranscript(videoID);
+            // ================== ALTERAÇÃO PRINCIPAL AQUI ==================
+            // Instruímos a biblioteca a priorizar a transcrição em português ('pt').
+            // Se não houver 'pt', ela buscará a padrão (geralmente 'en' ou a original).
+            const transcript = await YoutubeTranscript.fetchTranscript(videoID, { lang: 'pt' });
+            // =============================================================
+
             transcriptText = transcript.map(item => item.text).join(' ');
         } catch (error) {
-            // Se falhar, definimos a mensagem de aviso.
-            console.log(`Não foi possível buscar a transcrição para o vídeo ${videoID}:`, error.message);
-            transcriptText = "[AVISO] Não foi possível extrair o roteiro para este vídeo. Verifique se as legendas estão disponíveis.";
+            // Se falhar mesmo com a priorização, informamos o usuário.
+            console.log(`Não foi possível buscar a transcrição para o vídeo ${videoID} (mesmo com lang: 'pt'):`, error.message);
+            transcriptText = "[AVISO] Não foi possível extrair o roteiro para este vídeo. O criador pode ter desativado as legendas/transcrições automáticas.";
         }
 
         // Enviamos uma única resposta com tudo junto para o nosso site!
