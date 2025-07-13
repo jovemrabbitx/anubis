@@ -4,23 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Projeto Anubis</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
+    <style> body { font-family: 'Inter', sans-serif; } </style>
 </head>
-
 <body class="bg-gray-100">
 
     <div class="container mx-auto max-w-3xl mt-10 px-4 mb-10">
-
         <div class="text-center p-8 bg-white rounded-xl shadow-md">
             <h1 class="text-3xl font-bold text-gray-800">Projeto Anubis</h1>
             <p class="text-gray-500 mt-2">Cole a URL de um vídeo para extrair os seus dados e roteiro.</p>
@@ -28,56 +20,27 @@
 
         <div class="mt-8 p-8 bg-white rounded-xl shadow-md">
             <label for="youtube-url" class="block text-lg font-medium text-gray-700">URL do YouTube</label>
-            
-            <input 
-                type="text" 
-                id="youtube-url" 
-                class="mt-2 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Ex: https://www.youtube.com/watch?v=..."
-            >
-
-            <button 
-                id="process-button"
-                class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-all duration-300 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-                Extrair Informações
-            </button>
+            <input type="text" id="youtube-url" class="mt-2 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: https://www.youtube.com/watch?v=...">
+            <button id="process-button" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-all duration-300 shadow-md">Extrair Informações</button>
         </div>
 
         <div id="results-container" class="mt-8 p-8 bg-white rounded-xl shadow-md hidden">
             <h2 class="text-2xl font-bold text-gray-800 border-b pb-2">Resultados</h2>
-            
-            <div id="results-content" class="mt-4">
-            </div>
+            <div id="results-content" class="mt-4"></div>
         </div>
-
     </div>
 
     <script>
         // ==========================================================================
-        // ANUBIS - v2.0: USANDO O NOSSO PRÓPRIO SERVIÇO DE ROTEIROS
+        // ANUBIS - v3.0: ARQUITETURA PROFISSIONAL
         // ==========================================================================
-
         const urlInput = document.getElementById('youtube-url');
         const processButton = document.getElementById('process-button');
         const resultsContainer = document.getElementById('results-container');
         const resultsContent = document.getElementById('results-content');
 
-        // BÓNUS: Não vamos mais pedir a chave de API! Vamos buscá-la de um ficheiro especial.
-        async function getApiKey() {
-            try {
-                // O nosso site vai tentar buscar a chave de um ficheiro /api/key
-                const response = await fetch('/api/key');
-                const data = await response.json();
-                return data.apiKey;
-            } catch (error) {
-                console.error("Não foi possível buscar a chave de API do servidor. Usando prompt como fallback.");
-                return prompt('Não foi possível buscar a chave de API. Por favor, cole a sua Chave de API do YouTube:');
-            }
-        }
-
         processButton.addEventListener('click', async () => {
-            resultsContent.innerHTML = '<p class="text-center">A buscar dados, por favor aguarde...</p>';
+            resultsContent.innerHTML = '<p class="text-center">A contactar o nosso servidor... Por favor, aguarde.</p>';
             resultsContainer.classList.remove('hidden');
 
             const url = urlInput.value;
@@ -86,27 +49,28 @@
                 resultsContainer.classList.add('hidden');
                 return;
             }
-            
-            // Já não pedimos a chave aqui!
-            
+
             try {
                 const videoId = getVideoId(url);
                 if (!videoId) {
-                    alert('Não foi possível extrair o ID do vídeo. Verifique se a URL é válida.');
-                    resultsContainer.classList.add('hidden');
-                    return;
+                    throw new Error('URL inválida ou ID do vídeo não encontrado.');
+                }
+                
+                // Fazemos uma única chamada para o nosso próprio backend!
+                const response = await fetch(`/api/get-video-info?videoID=${videoId}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    // Se o nosso backend der um erro, mostramos a mensagem dele.
+                    throw new Error(data.error || 'Falha na comunicação com o servidor.');
                 }
 
-                const [videoData, transcript] = await Promise.all([
-                    fetchVideoData(videoId), // Já não precisa da chave aqui
-                    fetchTranscript(videoId)
-                ]);
-                
-                displayVideoData(videoData, transcript);
+                // A nossa função de exibição agora recebe o objeto completo do nosso backend.
+                displayVideoData(data.videoData, data.transcript);
 
             } catch (error) {
                 console.error('Ocorreu um erro no processo:', error);
-                resultsContent.innerHTML = `<p class="text-red-500 text-center">Ocorreu um erro: ${error.message}</p>`;
+                resultsContent.innerHTML = `<p class="text-red-500 text-center"><b>Erro:</b> ${error.message}</p>`;
             }
         });
 
@@ -116,61 +80,22 @@
             return matches ? matches[1] : null;
         }
 
-        // A função agora vai buscar a chave de API sozinha.
-        async function fetchVideoData(videoId) {
-            const apiKey = await getApiKey();
-            if (!apiKey) throw new Error("Chave de API não encontrada.");
-
-            const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${apiKey}`;
-            const response = await fetch(apiUrl);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: { message: 'Resposta inválida da API do YouTube.' }}));
-                throw new Error(`Falha na API do YouTube: ${errorData.error.message}`);
-            }
-            return response.json();
-        }
-
-        /**
-         * **FUNÇÃO ATUALIZADA PARA USAR O NOSSO SERVIÇO**
-         */
-        async function fetchTranscript(videoId) {
-            try {
-                // Chamamos o nosso próprio serviço!
-                const response = await fetch(`/api/transcript?videoID=${videoId}`);
-                const data = await response.json();
-
-                if (!response.ok) {
-                    // Se o nosso serviço der um erro, mostramos a mensagem dele.
-                    return `[ERRO] ${data.error}`;
-                }
-
-                return data.transcript;
-
-            } catch (error) {
-                console.error("Erro ao comunicar com o serviço de roteiro:", error);
-                return "[ERRO] Falha crítica na comunicação com o nosso serviço de roteiro.";
-            }
-        }
-
         function displayVideoData(data, transcriptText) {
-            if (!data.items || data.items.length === 0) {
+            if (!data || !data.items || data.items.length === 0) {
                 resultsContent.innerHTML = '<p class="text-red-500 text-center">Nenhum vídeo encontrado com esta URL.</p>';
                 return;
             }
 
             const video = data.items[0];
-            const title = video.snippet.title;
-            const channelTitle = video.snippet.channelTitle;
-            const thumbnailUrl = video.snippet.thumbnails.high.url;
-            const viewCount = video.statistics.viewCount;
+            const { title, channelTitle, thumbnails } = video.snippet;
+            const { viewCount } = video.statistics;
             const formattedViews = Number(viewCount).toLocaleString('pt-BR');
-            const transcriptClass = transcriptText.startsWith('[ERRO]') ? 'text-red-500' : 
-                                    transcriptText.startsWith('[AVISO]') ? 'text-yellow-600' : 'text-gray-700';
+            const transcriptClass = transcriptText.startsWith('[') ? 'text-yellow-600' : 'text-gray-700';
 
             const resultHTML = `
                 <div class="flex flex-col md:flex-row gap-6">
                     <div class="md:w-1/2">
-                        <img src="${thumbnailUrl}" alt="Capa do vídeo ${title}" class="rounded-lg shadow-lg w-full">
+                        <img src="${thumbnails.high.url}" alt="Capa do vídeo ${title}" class="rounded-lg shadow-lg w-full">
                     </div>
                     <div class="md:w-1/2 flex flex-col justify-center">
                         <h3 class="text-xl font-bold text-gray-900">${title}</h3>
@@ -178,18 +103,12 @@
                         <p class="text-gray-600 mt-1"><strong>Visualizações:</strong> ${formattedViews}</p>
                     </div>
                 </div>
-
                 <div class="mt-6 border-t pt-4">
                     <details open>
-                        <summary class="text-lg font-semibold cursor-pointer hover:text-blue-600">
-                            Roteiro do Vídeo
-                        </summary>
-                        <div class="mt-2 p-4 bg-gray-50 rounded-lg text-base leading-relaxed max-h-96 overflow-y-auto ${transcriptClass}">
-                            ${transcriptText}
-                        </div>
+                        <summary class="text-lg font-semibold cursor-pointer hover:text-blue-600">Roteiro do Vídeo</summary>
+                        <div class="mt-2 p-4 bg-gray-50 rounded-lg text-base leading-relaxed max-h-96 overflow-y-auto ${transcriptClass}">${transcriptText}</div>
                     </details>
-                </div>
-            `;
+                </div>`;
 
             resultsContent.innerHTML = resultHTML;
             resultsContainer.classList.remove('hidden');
